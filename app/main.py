@@ -16,11 +16,16 @@ interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
+# Label klasifikasi (urutannya harus sesuai dengan model)
+LABELS = ["healthy", "rust", "scab"]
+
 def preprocess_image(image_path, target_size):
     """Membaca dan memproses gambar untuk model TFLite."""
-    img = Image.open(image_path).resize(target_size)
+    img = Image.open(image_path).convert("RGB")  # Pastikan gambar dalam format RGB
+    img = img.resize(target_size)
     img_array = np.array(img) / 255.0  # Normalisasi
-    return np.expand_dims(img_array, axis=0).astype(np.float32)
+    return np.expand_dims(img_array, axis=0).astype(np.float32)  # Tambahkan batch dimension
+
 
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
@@ -37,11 +42,16 @@ async def predict(file: UploadFile = File(...)):
         # Prediksi menggunakan model TFLite
         interpreter.set_tensor(input_details[0]['index'], input_data)
         interpreter.invoke()
-        predictions = interpreter.get_tensor(output_details[0]['index'])
+        predictions = interpreter.get_tensor(output_details[0]['index'])[0]  # Ambil hasil prediksi
+
+        # Ambil label dengan probabilitas tertinggi
+        predicted_index = np.argmax(predictions)
+        predicted_label = LABELS[predicted_index]
 
         # Return hasil prediksi
         return JSONResponse(content={
-            "predictions": predictions.tolist()
+            "predicted_label": predicted_label,
+            "probabilities": predictions.tolist()
         })
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
