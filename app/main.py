@@ -4,6 +4,7 @@ from PIL import Image
 import tensorflow as tf
 import numpy as np
 import os
+import requests  
 
 app = FastAPI()
 
@@ -21,11 +22,13 @@ LABELS = ["healthy", "rust", "scab"]
 
 def preprocess_image(image_path, target_size):
     """Membaca dan memproses gambar untuk model TFLite."""
-    img = Image.open(image_path).convert("RGB")  # Pastikan gambar dalam format RGB
+    img = Image.open(image_path).convert("RGB")  
     img = img.resize(target_size)
     img_array = np.array(img) / 255.0  # Normalisasi
     return np.expand_dims(img_array, axis=0).astype(np.float32)  # Tambahkan batch dimension
 
+
+LARAVEL_API_BASE_URL = "http://127.0.0.1:8000/api"  # Ganti dengan URL Laravel
 
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
@@ -48,10 +51,17 @@ async def predict(file: UploadFile = File(...)):
         predicted_index = np.argmax(predictions)
         predicted_label = LABELS[predicted_index]
 
-        # Return hasil prediksi
+        # Request ke Laravel untuk mengambil data kategori
+        category_response = requests.get(f"{LARAVEL_API_BASE_URL}/categories/{predicted_label}")
+        if category_response.status_code != 200:
+            return JSONResponse(content={"predicted_label": predicted_label, "error": "Category not found"})
+
+        category_data = category_response.json()
+
+        # Return hasil prediksi + data kategori
         return JSONResponse(content={
             "predicted_label": predicted_label,
-            "probabilities": predictions.tolist()
+            "category": category_data
         })
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
